@@ -448,7 +448,7 @@ class CompanyRoleList(npyscreen.MultiLineAction):
         })
 
     def display_value(self, vl):
-        return "%s, %s" % (vl[0], vl[1])
+        return "%s, %s, %s, %s, %s, %s" % (vl[0], vl[1], vl[2], vl[3], vl[4], vl[5])
 
     def actionHighlighted(self, act_on_this, keypress):
         self.parent.parentApp.getForm('EditCompanyRole').value = act_on_this[0]
