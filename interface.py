@@ -58,7 +58,7 @@ class ResumeDatabase(object):
 
     def update_basic_info(self, name = '', email='', phone='', location=''):
         self.delete_basic_info()
-        self.add_basic_info(self, name, email, phone, location)
+        self.add_basic_info(name, email, phone, location)
 
     def delete_basic_info(self):
         db = sqlite3.connect(self.dbfilename)
@@ -67,13 +67,14 @@ class ResumeDatabase(object):
         db.commit()
         c.close()
 
-    def get_basic_info(self):
+    # Figure out why I need that blank ID and why I can't call without it on both ends.
+    def get_basic_info(self, id=''):
         db = sqlite3.connect(self.dbfilename)
         c = db.cursor()
         c.execute('SELECT * from basic_information')
-        records = c.fetchall()
+        records = c.fetchone()
         c.close()
-        return records[0]
+        return records
 
     # Start val_item_type
     def add_item_type(self, item_type=''):
@@ -118,6 +119,10 @@ class ResumeDatabase(object):
 class EditPersonalInformation(npyscreen.ActionForm):
     def create(self):
         self.value = None
+
+        if (self.parentApp.myDatabase.get_basic_info(self.value)):
+            self.value = True
+
         self.piPersonName = self.add(npyscreen.TitleText, name='Name:')
         self.piEmail      = self.add(npyscreen.TitleText, name='E-mail:')
         self.piLocation   = self.add(npyscreen.TitleText, name='Location:')
@@ -127,10 +132,10 @@ class EditPersonalInformation(npyscreen.ActionForm):
         if self.value:
             record = self.parentApp.myDatabase.get_basic_info(self.value)
             self.name = "Editing Existing Information"
-            self.piPersonName.value = record[1]
-            self.piEmail.value      = record[2]
-            self.piLocation.value   = record[3]
-            self.piPhone.value      = record[4]
+            self.piPersonName.value = record[0]
+            self.piEmail.value      = record[1]
+            self.piLocation.value   = record[2]
+            self.piPhone.value      = record[3]
         else:
             self.name = "New Personal Information"
             self.piPersonName.value = ''
@@ -139,14 +144,14 @@ class EditPersonalInformation(npyscreen.ActionForm):
             self.piPhone.value      = ''
 
     def on_ok(self):
-        if self.record_id: # We are editing an existing record
-            self.parentApp.myDatabase.update_basic_info(name    = self.piPersonName.value,
+        if self.value: # We are editing an existing record
+            self.parentApp.myDatabase.update_basic_info(name        = self.piPersonName.value,
                                                         email       = self.piEmail.value,
                                                         location    = self.piLocation.value,
                                                         phone       = self.piPhone.value
                                             )
         else: # We are adding a new record.
-            self.parentApp.myDatabase.add_basic_info(name        = self.piPersonName.value,
+            self.parentApp.myDatabase.add_basic_info(name            = self.piPersonName.value,
                                                          email       = self.piEmail.value,
                                                          location    = self.piLocation.value,
                                                          phone       = self.piPhone.value
@@ -162,19 +167,19 @@ class ItemTypeList(npyscreen.MultiLineAction):
         self.add_handlers({
             "^A": self.when_add_record,
             "^D": self.when_delete_record,
-            "^T": self.change_forms
+            "^B": self.parent.parentApp.switchFormPrevious
         })
 
     def display_value(self, vl):
         return "%s" % (vl[1])
 
     def actionHighlighted(self, act_on_this, keypress):
-        self.parent.parentApp.getForm('EDITITEMTYPEFM').value = act_on_this[0]
-        self.parent.parentApp.switchForm('EDITITEMTYPEFM')
+        self.parent.parentApp.getForm('EditItemType').value = act_on_this[0]
+        self.parent.parentApp.switchForm('EditItemType')
 
     def when_add_record(self, *args, **keywords):
-        self.parent.parentApp.getForm('EDITITEMTYPEFM').value = None
-        self.parent.parentApp.switchForm('EDITITEMTYPEFM')
+        self.parent.parentApp.getForm('EditItemType').value = None
+        self.parent.parentApp.switchForm('EditItemType')
 
     def when_delete_record(self, *args, **keywords):
         self.parent.parentApp.myDatabase.delete_item_type(self.values[self.cursor_line][0])
@@ -182,9 +187,9 @@ class ItemTypeList(npyscreen.MultiLineAction):
 
     def change_forms(self, *args, **keywords):
         if self.name == "Review Item Types":
-            change_to = "MAIN"
+            change_to = "ItemTypes"
         elif self.name == "Review Personal Information":
-            change_to = "EDITPERSONAL"
+            change_to = "Personal"
         else:
             change_to = "MAIN"
 
@@ -204,20 +209,6 @@ class ItemTypeListDisplay(npyscreen.FormMuttActiveWithMenus):
         self.wMain.values = self.parentApp.myDatabase.get_all_item_types()
         self.wMain.display()
 
-        self.mainMenu = self.add_menu(name="Main Menu", shortcut="^M")
-        #self.add(npyscreen.NewMenu(self.mainMenu))
-
-
-        self.mainMenu.addItemsFromList([
-            ("Resume Items", None, None, None),
-            ("Resume Item Classes", None, None, None),
-            ("Personal Information", self.parentApp.setNextForm("EDITPERSONAL"), None, None),
-            ("Certifications", None, None, None),
-            ("Company and Role Information", None, None, None),
-            ("Generate a Resume", None, None, None),
-            # ("Quit", None, None, None),
-            ("Quit", None, None, None),
-        ])
 
 
 
@@ -251,50 +242,40 @@ class EditItemTypes(npyscreen.ActionForm):
     def on_cancel(self):
         self.parentApp.switchFormPrevious()
 
-'''
 
-class GenResumeInterface(npyscreen.FormWithMenus):
+
+
+class MainMenu(npyscreen.Form):
     def create(self):
-        self.name = "Welcome to ResumeGen!"
+        #self.add(npyscreen.TitleText, name="Main Menu")
+        self.add(npyscreen.TitleFixedText, editable=False, name="Welcome to ResumeGen!")
+        self.add(npyscreen.ButtonPress, name="Personal Information",
+                 when_pressed_function=lambda: self.parentApp.switchForm("Personal"))
+        self.add(npyscreen.ButtonPress, name="Item Types",
+                 when_pressed_function=lambda: self.parentApp.switchForm("ItemTypes"))
+        self.add(npyscreen.ButtonPress, name="Quit (Q)", when_pressed_function=lambda: self.parentApp.switchForm(None))
+        self.add_handlers({"q": lambda x: self.parentApp.switchForm(None),
+                           "Q": lambda x: self.parentApp.switchForm(None)})
+        # self.add(self.mainMenu, name="Main Menu")
+        #self.mainMenu = self.add_menu(name="Main Menu")
 
-        self.mainMenu = self.add_menu(name="Main Menu", shortcut="^M")
-        #self.add(npyscreen.NewMenu(self.mainMenu))
+# Menu items
+# Resume Items
+# Resume Item Classes
+# Personal Information
+# Certifications
+# Company and Role Information
+# Generate a Resume
 
-
-        self.mainMenu.addItemsFromList([
-            ("Resume Items", None, None, None),
-            ("Resume Item Classes", None, None, None),
-            ("Personal Information", EditPersonalInformation, None, None),
-            ("Certifications", None, None, None),
-            ("Company and Role Information", None, None, None),
-            ("Generate a Resume", None, None, None),
-            # ("Quit", None, None, None),
-            ("Quit", self.exit_application(), None, None),
-        ])
-
-        self.how_exited_handers[npyscreen.wgwidget.EXITED_ESCAPE]  = self.exit_application
-
-
-    def whenDisplayText(self, argument):
-       npyscreen.notify_confirm(argument)
-
-    def exit_application(self):
-        # self.parentApp.switchFormPrevious(None)
-        # self.parentApp.setNextForm(None)
-        self.editing = False
-        # self.parentApp.switchFormNow()
-
-'''
 
 
 class ResumeGenApp(npyscreen.NPSAppManaged):
     def onStart(self):
         self.myDatabase = ResumeDatabase()
-        self.addForm("EDITPERSONAL", EditPersonalInformation, "Review Personal Information")
-        #self.registerForm("MAIN", EditPersonalInformation())
-        self.addForm("MAIN", ItemTypeListDisplay)
-        self.addForm("EDITITEMTYPEFM", EditItemTypes, "Review Item Types")
-        #self.registerForm("TEST", GenResumeInterface())
+        self.addForm("Personal", EditPersonalInformation, "Review Personal Information")
+        self.addForm("MAIN", MainMenu)
+        self.addForm("ItemTypes", ItemTypeListDisplay, "View Item Types")
+        self.addForm("EditItemType", EditItemTypes, "Edit Item Types")
 
     def onCleanExit(self):
         npyscreen.notify_wait("Goodbye!")
